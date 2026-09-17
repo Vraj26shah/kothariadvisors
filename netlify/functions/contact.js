@@ -46,56 +46,47 @@ function sanitise(value) {
   return String(value).replace(/[\r\n]/g, ' ').trim();
 }
 
-// ── Simple in-memory rate limiting ──────────────────────────────────────────
-const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX = 5;
-
-function isRateLimited(ip) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now - entry.start > RATE_LIMIT_WINDOW) {
-    rateLimitMap.set(ip, { start: now, count: 1 });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > RATE_LIMIT_MAX;
+// ── Response helper ─────────────────────────────────────────────────────────
+function respond(statusCode, data) {
+  return {
+    statusCode,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    },
+    body: JSON.stringify(data),
+  };
 }
 
 // ── Netlify Function handler ────────────────────────────────────────────────
 exports.handler = async (event) => {
-  // Only allow POST
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: JSON.stringify({ message: 'Method not allowed' }) };
+  // Handle preflight CORS request
+  if (event.httpMethod === 'OPTIONS') {
+    return respond(204, {});
   }
 
-  // Rate limiting
-  const clientIp = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
-  if (isRateLimited(clientIp)) {
-    return {
-      statusCode: 429,
-      body: JSON.stringify({ message: 'Too many requests. Please try again in a minute.' }),
-    };
+  // Only allow POST
+  if (event.httpMethod !== 'POST') {
+    return respond(405, { message: 'Method not allowed' });
   }
 
   let body;
   try {
     body = JSON.parse(event.body);
   } catch {
-    return { statusCode: 400, body: JSON.stringify({ message: 'Invalid request body.' }) };
+    return respond(400, { message: 'Invalid request body.' });
   }
 
   // Honeypot check
   if (body.website) {
-    return {
-      statusCode: 202,
-      body: JSON.stringify({ message: 'Your enquiry has been sent. We will be in touch soon.' }),
-    };
+    return respond(202, { message: 'Your enquiry has been sent. We will be in touch soon.' });
   }
 
   const errors = validateContact(body);
   if (errors.length > 0) {
-    return { statusCode: 400, body: JSON.stringify({ message: errors.join(' ') }) };
+    return respond(400, { message: errors.join(' ') });
   }
 
   const name = sanitise(body.name);
@@ -115,9 +106,9 @@ exports.handler = async (event) => {
       user: process.env.MAIL_USERNAME,
       pass: process.env.MAIL_PASSWORD,
     },
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 5000,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 
   try {
@@ -168,17 +159,11 @@ exports.handler = async (event) => {
       ].join('\n'),
     });
 
-    return {
-      statusCode: 202,
-      body: JSON.stringify({ message: 'Your enquiry has been sent. We will be in touch soon.' }),
-    };
+    return respond(202, { message: 'Your enquiry has been sent. We will be in touch soon.' });
   } catch (err) {
     console.error('Mail delivery failed:', err.message);
-    return {
-      statusCode: 503,
-      body: JSON.stringify({
-        message: `We could not send your enquiry. Please call ${FIRM.phone}.`,
-      }),
-    };
+    return respond(503, {
+      message: `We could not send your enquiry. Please call ${FIRM.phone}.`,
+    });
   }
 };
