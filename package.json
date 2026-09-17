@@ -1,0 +1,20 @@
+{
+  "name": "kothari-associates",
+  "version": "1.0.0",
+  "description": "Kothari & Associates – Tax Advocates website and enquiry service",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [],
+  "author": "Kothari & Associates",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "nodemailer": "^6.9.16"
+  }
+}
